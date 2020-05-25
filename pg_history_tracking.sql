@@ -99,7 +99,7 @@ CREATE TABLE
             PRIMARY KEY (id, rev) -- table_name isn't required because tuids are globally unique
           );
 
--- NOTE: you may want to partition the history table by schema/table
+-- NOTE: you may want to partition the history table by table_name
 
 CREATE INDEX history_tx_id_rev ON history (tx, id, rev);
 CREATE INDEX history_tn_id_rev ON history (table_name, id, rev);
