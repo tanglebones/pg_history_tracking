@@ -1,7 +1,7 @@
-BEGIN;
-
 CREATE SCHEMA IF NOT EXISTS eg;
 SET SEARCH_PATH = eg;
+
+BEGIN;
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE EXTENSION IF NOT EXISTS hstore;
@@ -91,18 +91,17 @@ CREATE TABLE
             tx BIGINT,
             table_name VARCHAR NOT NULL,
             id UUID NOT NULL,
-            rev UUID NOT NULL DEFAULT tuid_generate(),
             who VARCHAR NOT NULL,
-            tz TIMESTAMPTZ NOT NULL DEFAULT now(),
+            tz TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(), -- NOT now() or current_timestamp, we want the clock so a transaction that updates the same data twice won't hit a conflict on insert.
             op CHAR CHECK (op = ANY (ARRAY ['I' :: CHAR, 'U' :: CHAR, 'D' :: CHAR])),
             entry HSTORE,
-            PRIMARY KEY (id, rev) -- table_name isn't required because tuids are globally unique
+            PRIMARY KEY (id, tz) -- table_name isn't required because tuids are globally unique, tz is required as the same id can be updated multiple times in one transaction
           );
 
 -- NOTE: you may want to partition the history table by table_name
 
-CREATE INDEX history_tx_id_rev ON history (tx, id, rev);
-CREATE INDEX history_tn_id_rev ON history (table_name, id, rev);
+CREATE INDEX history_tx_id_tz ON history (tx, id, tz);
+CREATE INDEX history_tn_id_tz ON history (table_name, id, tz);
 
 CREATE TRIGGER history_prevent_change
   BEFORE UPDATE OR DELETE OR TRUNCATE
@@ -133,13 +132,7 @@ BEGIN
 
   idname = tg_argv[0];
 
-  tx = txid_current_if_assigned();
-  IF tx IS NOT NULL
-  THEN
-    tx = TXID_SNAPSHOT_XMIN(txid_current_snapshot());
-  ELSE
-    tx = txid_current();
-  END IF;
+  tx = pg_current_xact_id ();
 
   IF tg_op = 'UPDATE'
   THEN
@@ -245,3 +238,4 @@ FROM
 RESET "audit.user";
 
 ROLLBACK;
+
